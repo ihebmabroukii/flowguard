@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data and trained models (too large for git, rebuilt with make)
+data/**
+!data/**/
+!data/**/.gitkeep
+models/*
+!models/.gitkeep
+*.pcap
+*.pcapng
+*.parquet
+
+# Experiment tracking
+mlruns/
+mlartifacts/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+
+# Archives (datasets are downloaded, never committed)
+*.zip

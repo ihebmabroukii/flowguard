@@ -1,0 +1,36 @@
+# Feature configuration shared by training (offline) and the detection service (online).
+#
+# Both improved releases (DistriNet, CNS 2022) were generated with the same fixed CICFlowMeter,
+# so CIC-IDS2017 and CSE-CIC-IDS2018 share one header: 89 columns, the last two being
+# `Label` and `Attempted Category`. No renaming is needed between them.
+
+# Columns read as text. Everything else is coerced to float32.
+string_columns: [Flow ID, Src IP, Dst IP, Timestamp, Label]
+
+# Columns the model must never see. They identify the lab, not the attack.
+# Timestamp and Label are not lost: cleaning keeps them as the `timestamp` and `label_raw` metadata columns.
+drop:
+  - id                  # row number inside the CSV
+  - Flow ID
+  - Src IP
+  - Dst IP
+  - Src Port
+  - Dst Port            # lets the model memorize lab services; re-enable only as an ablation
+  - Timestamp
+  - Label
+  - Attempted Category  # used once to apply attempted_policy, then dropped
+
+# Optional renames applied to every CSV right after reading (old name: new name).
+# Empty for the improved releases. Fill it in to load a CSV produced by another CICFlowMeter
+# version, such as the Python `cicflowmeter` package used by the online service.
+rename: {}
+
+# Exact duplicate flows are removed before splitting. When identical feature vectors carry
+# different families, the label is ambiguous and all copies are removed.
+drop_conflicting_duplicates: true
+
+# Preprocessing (used by features/pipeline.py, fitted on the training split only).
+min_variance: 0.0       # drop constant features
+max_correlation: 0.98   # drop one feature of each highly correlated pair
+log1p: true             # heavy-tailed counters and durations
+scaler: quantile        # quantile | standard

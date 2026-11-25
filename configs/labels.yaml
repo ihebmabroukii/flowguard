@@ -1,0 +1,27 @@
+# Dataset label -> shared attack family.
+#
+# Labels are normalized before matching: the "- Attempted" suffix is removed, the text is
+# lowercased, and every run of non-alphanumeric characters becomes one space
+# ("Web Attack \x96 Brute Force" -> "web attack brute force").
+# Rules are regular expressions tried top to bottom; the first match wins.
+# A label that matches no rule stops the pipeline with the list of unknown labels,
+# so nothing is ever silently mislabeled. Family `drop` removes the rows (counted in the cleaning report).
+
+families: [Benign, DoS, DDoS, PortScan, BruteForce, WebAttack, Botnet, Infiltration]
+
+# The improved releases label flows that were sent as part of an attack but carry no malicious
+# behaviour as "<attack> - Attempted" (their "Attempted Category" column is != -1).
+# The dataset authors recommend relabeling them Benign and never using them as a separate class.
+attempted_policy: benign  # benign | drop
+
+rules:
+  - {pattern: '^benign$',          family: Benign}
+  - {pattern: '^label$',           family: drop}          # header rows repeated inside some CSVs
+  - {pattern: 'heartbleed',        family: drop}          # a handful of flows, too few to learn or evaluate
+  - {pattern: 'web|xss|sql',       family: WebAttack}     # before brute force: "Web Attack - Brute Force"
+  - {pattern: 'ddos|loic|hoic',    family: DDoS}          # before dos
+  - {pattern: '\bdos\b',           family: DoS}
+  - {pattern: 'port ?scan|nmap',   family: PortScan}      # includes "Infiltration - Portscan": behaviourally a scan
+  - {pattern: 'infilt',            family: Infiltration}  # also matches the dataset's own "Infilteration" typo
+  - {pattern: 'patator|brute ?force', family: BruteForce}
+  - {pattern: '\bbot',             family: Botnet}        # "Bot", "Botnet", "Botnet Ares"

@@ -1,0 +1,345 @@
+<title>FlowGuard Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column (~880px) with a wide system diagram, tables for specs, a two-person day plan. */
+:root{
+  --bg:#F4F6F8; --surface:#FFFFFF; --fg:#13202B; --muted:#566676; --line:#D5DDE4;
+  --accent:#B45F06; --accent-soft:#FBEBD8; --online:#0B6F79; --online-soft:#DDF1F2;
+  --lane:#E9EEF2; --danger:#B42318; --ok:#1B7F4B;
+  --f-display:"Space Grotesk",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E151B; --surface:#152029; --fg:#E2E9EF; --muted:#93A4B3; --line:#2A3946;
+  --accent:#F0A447; --accent-soft:#3A2810; --online:#5CC6CF; --online-soft:#12343A;
+  --lane:#121C24; --danger:#F97066; --ok:#4BC98A; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0E151B; --surface:#152029; --fg:#E2E9EF; --muted:#93A4B3; --line:#2A3946;
+  --accent:#F0A447; --accent-soft:#3A2810; --online:#5CC6CF; --online-soft:#12343A;
+  --lane:#121C24; --danger:#F97066; --ok:#4BC98A; color-scheme:dark;}
+
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.6;}
+.wrap{max-width:920px;margin:0 auto;padding-block:40px 80px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:56px;}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.2;margin:0;}
+h1{font-size:clamp(2rem,5vw,2.9rem);letter-spacing:-0.02em;}
+h2{font-size:1.6rem;letter-spacing:-0.01em;}
+h3{font-size:1.1rem;}
+p{margin:0;max-width:68ch;}
+section{display:flex;flex-direction:column;gap:18px;min-width:0;}
+.eyebrow{font-family:var(--f-mono);font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);}
+.lede{font-size:1.12rem;color:var(--muted);}
+code,.mono{font-family:var(--f-mono);font-size:.86em;}
+code{background:var(--lane);padding:1px 5px;border-radius:4px;}
+ul{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;}
+a{color:var(--online);}
+
+header{display:flex;flex-direction:column;gap:16px;}
+.pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
+.pick div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;}
+.pick b{font-family:var(--f-display);font-size:.95rem;}
+.pick span{color:var(--muted);font-size:.92rem;}
+
+.rq{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line);}
+.rq div{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+.rq .tag{font-family:var(--f-mono);font-weight:500;color:var(--accent);}
+
+.diagram{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;}
+.diagram svg{display:block;width:100%;min-width:900px;height:auto;}
+svg .lane{fill:var(--lane);}
+svg .lanelbl{fill:var(--muted);font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;}
+svg .box{fill:var(--surface);stroke:var(--accent);stroke-width:1.5;}
+svg .box.on{stroke:var(--online);}
+svg .box.side{fill:var(--accent-soft);}
+svg .ttl{fill:var(--fg);font-family:var(--f-display);font-weight:600;font-size:14px;}
+svg .sub{fill:var(--muted);font-family:var(--f-body);font-size:11.5px;}
+svg .arr{stroke:var(--muted);stroke-width:1.5;fill:none;}
+svg .arr.dash{stroke-dasharray:5 4;}
+svg .arrhead{fill:var(--muted);}
+svg .elbl{fill:var(--muted);font-family:var(--f-mono);font-size:11px;}
+.legend{display:flex;flex-wrap:wrap;gap:18px;font-size:.88rem;color:var(--muted);}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;border:1.5px solid;vertical-align:-2px;margin-right:6px;}
+
+.comp{display:flex;flex-direction:column;gap:12px;padding:20px 0;border-top:1px solid var(--line);}
+.comp-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.comp-head .where{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);}
+
+.tbl{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:.92rem;font-variant-numeric:tabular-nums;}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+th{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500;}
+td:first-child{white-space:nowrap;font-weight:500;}
+
+.decision{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;font-family:var(--f-mono);font-size:.86rem;line-height:1.75;overflow-x:auto;white-space:pre;}
+.decision .k{color:var(--accent);} .decision .o{color:var(--online);}
+
+pre.tree{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;font-family:var(--f-mono);font-size:.84rem;line-height:1.6;overflow-x:auto;margin:0;}
+pre.tree .c{color:var(--muted);}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{font-family:var(--f-mono);font-size:.8rem;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);}
+
+.warn{display:flex;flex-direction:column;gap:0;}
+.warn div{display:grid;grid-template-columns:200px 1fr;gap:16px;padding:12px 0;border-bottom:1px solid var(--line);}
+.warn b{color:var(--danger);font-weight:600;}
+@media (max-width:640px){.warn div{grid-template-columns:1fr;gap:4px;}}
+
+.plan td:nth-child(2){color:var(--fg);} .plan td:nth-child(3){color:var(--fg);}
+.who{font-family:var(--f-mono);font-size:.74rem;padding:2px 8px;border-radius:999px;}
+.who.a{background:var(--accent-soft);color:var(--accent);} .who.b{background:var(--online-soft);color:var(--online);}
+footer{color:var(--muted);font-size:.88rem;border-top:1px solid var(--line);padding-top:16px;}
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">ML project · Cyber security engineering · 2 people · 7 days</span>
+  <h1>FlowGuard: an intrusion detector that admits what it doesn't know</h1>
+  <p class="lede">A network intrusion detection system built on flow features. It classifies known attacks, flags unfamiliar traffic as a possible zero-day, explains every alert, and gets tested on a second dataset and against an attacker who tries to slip past it.</p>
+  <div class="pick">
+    <div><b>Why this one</b><span>It is clearly a security project and the data is public and safe. A week with AI-assisted coding is enough to finish it properly.</span></div>
+    <div><b>What lifts it above a Kaggle notebook</b><span>Cross-dataset testing, zero-day simulation, adversarial evasion and per-alert explanations. Most student IDS projects stop at "99% accuracy".</span></div>
+    <div><b>What you demo</b><span>Upload a pcap. The dashboard lists the flows it flagged and gives the reason for each one.</span></div>
+  </div>
+</header>
+
+<section>
+  <span class="eyebrow">The questions the project answers</span>
+  <h2>Four research questions</h2>
+  <p>Every experiment exists to answer one of these. Put them in your introduction and answer them in your conclusion.</p>
+  <div class="rq">
+    <div><span class="tag">RQ1</span><span>How well do linear, tree and neural models detect and classify attacks on data from the same network they were trained on?</span></div>
+    <div><span class="tag">RQ2</span><span>How much of that performance survives when the model is moved to a different network (train on CIC-IDS2017, test on CSE-CIC-IDS2018)?</span></div>
+    <div><span class="tag">RQ3</span><span>Can a hybrid design (anomaly detector plus classifier) catch an attack family it has never seen during training?</span></div>
+    <div><span class="tag">RQ4</span><span>How easily can an attacker who only controls their own traffic evade the detector, and how much does adversarial training help?</span></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">System architecture</span>
+  <h2>Two pipelines that share one feature transform</h2>
+  <p>The offline pipeline is where you do the research and produce the report. The online pipeline is the working detector you demo. They use the same saved preprocessing, so the model sees live traffic exactly the way it saw training data.</p>
+  <div class="diagram" role="img" aria-label="FlowGuard architecture: offline research pipeline from datasets to model registry, with adversarial lab and explainability branches; online detection service from traffic input to dashboard, using the saved feature transform and the deployed model.">
+  <svg viewBox="0 0 1065 430" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrhead" d="M0,0 L10,5 L0,10 z"/></marker>
+    </defs>
+    <rect class="lane" x="5" y="5" width="1055" height="262" rx="10"/>
+    <rect class="lane" x="5" y="285" width="1055" height="140" rx="10"/>
+    <text class="lanelbl" x="20" y="30">OFFLINE · RESEARCH PIPELINE</text>
+    <text class="lanelbl" x="20" y="310">ONLINE · DETECTION SERVICE</text>
+
+    <!-- offline row -->
+    <g><rect class="box" x="20" y="48" width="150" height="74" rx="8"/><text class="ttl" x="32" y="72">Datasets</text><text class="sub" x="32" y="92">CIC-IDS2017 +</text><text class="sub" x="32" y="108">CSE-CIC-IDS2018</text></g>
+    <g><rect class="box" x="195" y="48" width="150" height="74" rx="8"/><text class="ttl" x="207" y="72">Clean &amp; harmonize</text><text class="sub" x="207" y="92">dedupe · drop IDs</text><text class="sub" x="207" y="108">shared label map</text></g>
+    <g><rect class="box" x="370" y="48" width="150" height="74" rx="8"/><text class="ttl" x="382" y="72">Feature pipeline</text><text class="sub" x="382" y="92">impute · scale · select</text><text class="sub" x="382" y="108">fit on train only</text></g>
+    <g><rect class="box" x="545" y="48" width="150" height="74" rx="8"/><text class="ttl" x="557" y="72">Model zoo</text><text class="sub" x="557" y="92">LR · RF · XGBoost</text><text class="sub" x="557" y="108">MLP · IsolationForest</text></g>
+    <g><rect class="box" x="720" y="48" width="150" height="74" rx="8"/><text class="ttl" x="732" y="72">Evaluation harness</text><text class="sub" x="732" y="92">4 test protocols</text><text class="sub" x="732" y="108">macro-F1 · FPR · PR-AUC</text></g>
+    <g><rect class="box" x="895" y="48" width="150" height="74" rx="8"/><text class="ttl" x="907" y="72">Model registry</text><text class="sub" x="907" y="92">MLflow runs</text><text class="sub" x="907" y="108">joblib / .pt files</text></g>
+    <path class="arr" d="M170,85 H193" marker-end="url(#ah)"/>
+    <path class="arr" d="M345,85 H368" marker-end="url(#ah)"/>
+    <path class="arr" d="M520,85 H543" marker-end="url(#ah)"/>
+    <path class="arr" d="M695,85 H718" marker-end="url(#ah)"/>
+    <path class="arr" d="M870,85 H893" marker-end="url(#ah)"/>
+
+    <!-- offline branches -->
+    <g><rect class="box side" x="545" y="160" width="150" height="74" rx="8"/><text class="ttl" x="557" y="184">Adversarial lab</text><text class="sub" x="557" y="204">constrained evasion</text><text class="sub" x="557" y="220">+ adversarial training</text></g>
+    <g><rect class="box side" x="720" y="160" width="150" height="74" rx="8"/><text class="ttl" x="732" y="184">Explainability</text><text class="sub" x="732" y="204">SHAP global +</text><text class="sub" x="732" y="220">per-alert reasons</text></g>
+    <path class="arr" d="M620,124 V158" marker-start="url(#ah)" marker-end="url(#ah)"/>
+    <path class="arr" d="M695,197 H718" marker-end="url(#ah)"/>
+    <text class="elbl" x="628" y="146">attack / retrain</text>
+    <path class="arr" d="M795,158 V124" marker-end="url(#ah)"/>
+
+    <!-- online row -->
+    <g><rect class="box on" x="20" y="330" width="150" height="74" rx="8"/><text class="ttl" x="32" y="354">Traffic input</text><text class="sub" x="32" y="374">pcap upload or</text><text class="sub" x="32" y="390">live interface</text></g>
+    <g><rect class="box on" x="195" y="330" width="150" height="74" rx="8"/><text class="ttl" x="207" y="354">Flow extractor</text><text class="sub" x="207" y="374">cicflowmeter</text><text class="sub" x="207" y="390">same ~80 features</text></g>
+    <g><rect class="box on" x="370" y="330" width="150" height="74" rx="8"/><text class="ttl" x="382" y="354">Saved transform</text><text class="sub" x="382" y="374">identical to the</text><text class="sub" x="382" y="390">training pipeline</text></g>
+    <g><rect class="box on" x="545" y="330" width="150" height="74" rx="8"/><text class="ttl" x="557" y="354">Hybrid detector</text><text class="sub" x="557" y="374">anomaly gate +</text><text class="sub" x="557" y="390">attack classifier</text></g>
+    <g><rect class="box on" x="720" y="330" width="150" height="74" rx="8"/><text class="ttl" x="732" y="354">Alert explainer</text><text class="sub" x="732" y="374">top-5 SHAP features</text><text class="sub" x="732" y="390">per flagged flow</text></g>
+    <g><rect class="box on" x="895" y="330" width="150" height="74" rx="8"/><text class="ttl" x="907" y="354">Dashboard + API</text><text class="sub" x="907" y="374">Streamlit UI</text><text class="sub" x="907" y="390">FastAPI /predict</text></g>
+    <path class="arr" d="M170,367 H193" marker-end="url(#ah)"/>
+    <path class="arr" d="M345,367 H368" marker-end="url(#ah)"/>
+    <path class="arr" d="M520,367 H543" marker-end="url(#ah)"/>
+    <path class="arr" d="M695,367 H718" marker-end="url(#ah)"/>
+    <path class="arr" d="M870,367 H893" marker-end="url(#ah)"/>
+
+    <!-- cross-lane links -->
+    <path class="arr dash" d="M445,124 V328" marker-end="url(#ah)"/>
+    <text class="elbl" x="453" y="250">serialize</text>
+    <path class="arr dash" d="M970,124 V252 H640 V328" marker-end="url(#ah)"/>
+    <text class="elbl" x="900" y="246">deploy best model</text>
+  </svg>
+  </div>
+  <div class="legend">
+    <span><i style="border-color:var(--accent)"></i>Offline research step</span>
+    <span><i style="border-color:var(--accent);background:var(--accent-soft)"></i>Offline analysis branch</span>
+    <span><i style="border-color:var(--online)"></i>Online detection step</span>
+    <span>Dashed arrow: an artifact passed from offline to online</span>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Components</span>
+  <h2>What each box does</h2>
+
+  <div class="comp">
+    <div class="comp-head"><h3>1 · Datasets</h3><span class="where">src/flowguard/data/load.py</span></div>
+    <p>Both datasets come from the Canadian Institute for Cybersecurity and were made with the same flow tool (CICFlowMeter). That shared feature set is what makes the cross-dataset test possible.</p>
+    <div class="tbl"><table>
+      <tr><th>Dataset</th><th>Role</th><th>Notes</th></tr>
+      <tr><td>CIC-IDS2017</td><td>Training and in-dataset testing</td><td>About 2.8M flows over 5 days. Use the corrected release (Engelen et al., 2021). The original has mislabeled flows and broken features.</td></tr>
+      <tr><td>CSE-CIC-IDS2018</td><td>Cross-dataset test only</td><td>About 16M flows on a different network. Use a corrected release if you can get one. Take a stratified sample of 1–2M flows so it fits in RAM.</td></tr>
+      <tr><td>Your own pcap</td><td>Demo only</td><td>A short capture of you running nmap and hydra against a VM you own, plus normal browsing. Never scan hosts you don't own.</td></tr>
+    </table></div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>2 · Clean and harmonize</h3><span class="where">clean.py · labels.py · split.py</span></div>
+    <ul>
+      <li>Drop identifiers the model must not learn from: <code>Flow ID</code>, <code>Src IP</code>, <code>Dst IP</code>, <code>Src Port</code>, <code>Timestamp</code>. If you keep them, the model memorizes the lab's attacker IP and your results are fake.</li>
+      <li>Replace <code>inf</code> values (they show up in <code>Flow Bytes/s</code> and <code>Flow Packets/s</code>) with NaN, then impute. Remove exact duplicate rows before splitting, so the same flow can't end up in both train and test.</li>
+      <li>Map column names between the two datasets, since the releases spell some features differently. Keep only the columns they share.</li>
+      <li>Map the fine-grained labels to one shared set of families: <span class="mono">Benign, DoS, DDoS, PortScan, BruteForce, WebAttack, Botnet, Infiltration</span>.</li>
+      <li>Save everything as Parquet. It loads much faster than CSV and keeps the dtypes.</li>
+    </ul>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>3 · Feature pipeline</h3><span class="where">features/pipeline.py</span></div>
+    <p>One scikit-learn <code>Pipeline</code>: median imputation, then <code>QuantileTransformer</code> or <code>StandardScaler</code> (flow features are very heavy-tailed, so try a <code>log1p</code> first), then optional feature selection that drops near-constant and highly correlated columns. Fit it on the training split only and save it with <code>joblib</code>. The online service loads this same file.</p>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>4 · Model zoo</h3><span class="where">models/</span></div>
+    <div class="tbl"><table>
+      <tr><th>Model</th><th>Why it's there</th><th>Setup</th></tr>
+      <tr><td>Logistic regression</td><td>The baseline from your course. Every other model has to beat it to justify its complexity.</td><td>Multinomial, <code>class_weight="balanced"</code></td></tr>
+      <tr><td>Random Forest</td><td>Strong, robust, needs little tuning</td><td>300 trees, balanced class weights</td></tr>
+      <tr><td>XGBoost / LightGBM</td><td>Usually the best on tabular flows, and SHAP explains it quickly</td><td>Early stopping on a validation split</td></tr>
+      <tr><td>MLP (PyTorch)</td><td>Needed for gradient-based adversarial attacks</td><td>3 layers, dropout, weighted cross-entropy</td></tr>
+      <tr><td>Isolation Forest or autoencoder</td><td>Anomaly detector trained on benign traffic only, for unseen attacks</td><td>Threshold at the 99th percentile of benign scores</td></tr>
+    </table></div>
+    <p>The <b>hybrid detector</b> combines the best classifier with the anomaly model. This is the design choice that answers RQ3:</p>
+<div class="decision"><span class="k">score</span> = classifier.predict_proba(flow)      <span class="k">anom</span> = anomaly_model.score(flow)
+
+if  max(score[attacks]) ≥ τ          → <span class="o">ALERT: known attack (family = argmax)</span>
+elif anom ≥ θ                        → <span class="o">ALERT: unknown anomaly (possible zero-day)</span>
+else                                 → benign
+
+τ, θ tuned on validation to keep benign false positives ≤ 1 per 1,000 flows</div>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>5 · Evaluation harness</h3><span class="where">eval/protocols.py · metrics.py</span></div>
+    <p>One function per protocol, each of which logs to MLflow. Every model goes through every protocol, so the results table fills itself in.</p>
+    <div class="tbl"><table>
+      <tr><th>Protocol</th><th>Train on</th><th>Test on</th><th>Answers</th></tr>
+      <tr><td>P1 · In-dataset</td><td>First 70% of each day of 2017, by time</td><td>Last 30% of each day</td><td>RQ1</td></tr>
+      <tr><td>P2 · Cross-dataset</td><td>All of 2017</td><td>2018 sample, shared families only</td><td>RQ2</td></tr>
+      <tr><td>P3 · Leave-one-family-out</td><td>2017 minus one attack family</td><td>The held-out family plus benign</td><td>RQ3</td></tr>
+      <tr><td>P4 · Adversarial</td><td>P1 model, then the hardened model</td><td>Perturbed attack flows</td><td>RQ4</td></tr>
+    </table></div>
+    <p><b>Metrics:</b> macro-F1 and per-class recall (accuracy is meaningless when about 80% of flows are benign), benign false-positive rate expressed as alerts per 10,000 flows, PR-AUC, confusion matrix, and throughput in flows per second. For P3, report the share of the held-out family flagged as unknown anomaly. For P4, report the evasion rate.</p>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>6 · Adversarial lab</h3><span class="where">adversarial/threat_model.py · attacks.py · defenses.py</span></div>
+    <p><b>Threat model:</b> the attacker controls their own packets but not the server's replies, and must keep the attack working. In practice they can pad packets, add delays between packets, and send extra dummy packets. They can't shrink the payload or change backward-direction features.</p>
+    <ul>
+      <li><b>Mutable-feature mask:</b> list which of the ~80 features the attacker can change and in which direction (most can only increase). This mask is the core of the security argument.</li>
+      <li><b>Attacks:</b> masked PGD on the MLP (white-box). Transfer those samples to XGBoost, and also run a black-box attack on it (HopSkipJump from IBM ART, or a simple masked random search). Clip to realistic bounds and recompute dependent features such as means and rates.</li>
+      <li><b>Defenses:</b> adversarial training (add perturbed samples to training) and a model restricted to features the attacker can't change. Compare evasion rate against clean macro-F1. That trade-off curve is one of your key figures.</li>
+    </ul>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>7 · Explainability</h3><span class="where">explain/shap_explain.py</span></div>
+    <p><code>shap.TreeExplainer</code> on XGBoost. Globally, show a beeswarm plot per attack family. Do these features make networking sense? A PortScan driven by tiny flow duration and few packets does. A model driven by <code>Dst Port</code> alone is a warning sign. Locally, the top 5 features with their values become the reason text attached to each alert in the dashboard.</p>
+  </div>
+
+  <div class="comp">
+    <div class="comp-head"><h3>8 · Online detection service</h3><span class="where">serve/ · app/dashboard.py</span></div>
+    <ul>
+      <li><b>Flow extractor:</b> the Python <code>cicflowmeter</code> package turns a pcap into flow rows. Its feature names differ a little from the Java tool used for the datasets, so map them with the same column map as step 2.</li>
+      <li><b>FastAPI:</b> <code>POST /predict</code> takes flow rows and returns label, confidence, anomaly score and top features. <code>POST /pcap</code> runs the full chain.</li>
+      <li><b>Streamlit dashboard:</b> upload a pcap and get an alert table (time, src→dst, family or "unknown", confidence), an attack mix chart, and a SHAP waterfall when you click an alert.</li>
+      <li>Be honest in the report: live traffic from your own machine differs from the lab datasets, so treat the demo as a qualitative showcase and keep the quantitative claims to P1–P4.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Codebase</span>
+  <h2>Repository layout</h2>
+<pre class="tree">flowguard/
+├── configs/
+│   ├── features.yaml        <span class="c"># dropped columns, 2017↔2018 column map</span>
+│   ├── labels.yaml          <span class="c"># fine label → family</span>
+│   └── experiments.yaml     <span class="c"># models × protocols to run</span>
+├── data/raw/ · data/processed/   <span class="c"># git-ignored, Parquet</span>
+├── src/flowguard/
+│   ├── data/        load.py  clean.py  labels.py  split.py
+│   ├── features/    pipeline.py
+│   ├── models/      baselines.py  trees.py  mlp.py  anomaly.py  hybrid.py
+│   ├── eval/        protocols.py  metrics.py  report.py
+│   ├── adversarial/ threat_model.py  attacks.py  defenses.py
+│   ├── explain/     shap_explain.py
+│   └── serve/       extractor.py  api.py
+├── app/dashboard.py         <span class="c"># Streamlit</span>
+├── notebooks/               <span class="c"># 01_eda, 02_results_figures only; logic lives in src/</span>
+├── tests/                   <span class="c"># label map, no leakage, pipeline shape</span>
+├── reports/figures/
+├── Makefile                 <span class="c"># make data · make train · make eval · make demo</span>
+└── pyproject.toml</pre>
+  <div class="chips">
+    <span class="chip">Python 3.11</span><span class="chip">pandas + pyarrow</span><span class="chip">scikit-learn</span><span class="chip">xgboost</span><span class="chip">imbalanced-learn</span><span class="chip">PyTorch</span><span class="chip">shap</span><span class="chip">adversarial-robustness-toolbox</span><span class="chip">mlflow</span><span class="chip">cicflowmeter</span><span class="chip">FastAPI</span><span class="chip">Streamlit</span><span class="chip">plotly</span><span class="chip">pytest</span>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Schedule</span>
+  <h2>Seven days, two people</h2>
+  <p><span class="who a">A</span> owns data and models. <span class="who b">B</span> owns attacks, explanations and serving. You sync once a day on the results table. The split lets you work in parallel without touching each other's files.</p>
+  <div class="tbl"><table class="plan">
+    <tr><th>Day</th><th><span class="who a">A</span> Data &amp; models</th><th><span class="who b">B</span> Attack, explain, serve</th></tr>
+    <tr><td>1</td><td>Download both datasets, clean, label map, column map, Parquet</td><td>Repo skeleton, configs, MLflow, metrics and protocol stubs</td></tr>
+    <tr><td>2</td><td>Feature pipeline, then LR, RF and XGBoost on P1</td><td>MLP in PyTorch, anomaly model on benign only</td></tr>
+    <tr><td>3</td><td>P2 cross-dataset run and error analysis (which families collapse, and why)</td><td>Hybrid detector, τ/θ tuning, P3 leave-one-family-out</td></tr>
+    <tr><td>4</td><td>SHAP global analysis, feature sanity check, ablations</td><td>Threat model, mutable mask, PGD and black-box attacks</td></tr>
+    <tr><td>5</td><td>Adversarial training with B, robustness vs. accuracy curve</td><td>Flow extractor, FastAPI, Streamlit dashboard</td></tr>
+    <tr><td>6</td><td colspan="2">Record the demo pcap in your own VM lab, run it end to end, produce final figures, write the report</td></tr>
+    <tr><td>7</td><td colspan="2">Finish report and slides, rehearse the demo, keep the rest as buffer</td></tr>
+  </table></div>
+  <p>If you fall behind, cut in this order: live-interface capture, then the black-box attack, then the autoencoder (Isolation Forest is enough). Never cut P2. It is your main finding.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Traps</span>
+  <h2>Mistakes that quietly ruin IDS results</h2>
+  <div class="warn">
+    <div><b>Identifier leakage</b><span>IPs, ports and timestamps let the model recognize the lab instead of the attack. Drop them, then check SHAP to confirm nothing similar sneaks in.</span></div>
+    <div><b>Duplicates across splits</b><span>DoS and scan traffic produce many identical flows. Deduplicate before splitting, or test scores get inflated.</span></div>
+    <div><b>Scaler fit on all data</b><span>Fit the pipeline on train only. The test set has to stay unseen in every way.</span></div>
+    <div><b>Reporting accuracy</b><span>A model that says "benign" every time gets about 80%. Lead with macro-F1 and false-positive rate.</span></div>
+    <div><b>Tiny classes</b><span>Infiltration and Heartbleed have very few samples. Merge or drop them, and say so. Don't report 100% recall on 11 samples.</span></div>
+    <div><b>Unrealistic attacks</b><span>An adversarial example that changes a feature the attacker can't control proves nothing. The mask is what makes P4 credible.</span></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Deliverables</span>
+  <h2>What you hand in</h2>
+  <ul>
+    <li><b>Report:</b> introduction and threat model → related work (keep it short) → data and the corrections you applied → method (pipeline, models, hybrid, attacks) → results per RQ → limitations → conclusion.</li>
+    <li><b>Key figures:</b> P1 vs. P2 macro-F1 per model (the generalization drop), per-family recall heatmap, P3 detection of unseen families, evasion rate before and after hardening, SHAP beeswarm.</li>
+    <li><b>Demo:</b> nmap scan and SSH brute force on your own VM appear in the dashboard with the reason for each alert. Then the evasion script hides the scan from the baseline but not from the hardened model.</li>
+    <li><b>Code:</b> the repo above, with <code>make eval</code> rebuilding every number in the report.</li>
+  </ul>
+</section>
+
+<footer>FlowGuard project plan. Dataset sizes are approximate; check them against the release you download.</footer>
+</div>

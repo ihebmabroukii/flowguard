@@ -1,0 +1,155 @@
+# Which models run under which protocols. `make eval` runs every pair and logs to MLflow.
+seed: 42
+mlflow_experiment: flowguard
+
+data:
+  chunksize: 500000               # CSV rows read at a time (the 2018 day files are several GB each)
+  datasets:
+    cic-ids2017:                  # training data, kept in full
+      benign_fraction: 1.0
+      attack_fraction: 1.0
+    cse-cic-ids2018:              # test-only data for P2, sampled while loading so it fits in RAM
+      benign_fraction: 0.05
+      attack_fraction: 0.5
+
+  # P1 split. Within every (day, family) group, flows are ordered by time: the first 70%
+  # form the training portion and the rest is test. The last 15% of the training portion
+  # becomes validation (early stopping, thresholds). Splitting per family keeps every attack
+  # in train and test even when it only ran during one hour of the day.
+  train_fraction: 0.7
+  validation_fraction: 0.15
+
+models:
+  # ---- our implementations (NumPy, src/flowguard/models/scratch/) ----
+  softmax_regression:
+    lr: 0.01
+    epochs: 30
+    batch_size: 4096
+    alpha: 0.0001                 # L2 penalty on the weights
+    patience: 3                   # early stopping on validation loss
+    max_class_weight: 100         # balanced sample weights, clipped so tiny classes can't dominate
+  mlp:
+    hidden: [256, 128, 64]
+    dropout: 0.2
+    lr: 0.001
+    batch_size: 2048
+    epochs: 20
+    alpha: 0.00001
+    patience: 3
+    max_class_weight: 100
+  isolation_forest:               # trained on benign flows only
+    n_estimators: 300
+    max_samples: 256
+
+  # ---- library benchmarks, used to validate ours ----
+  logreg:
+    C: 1.0
+    max_iter: 2000
+    class_weight: balanced
+    max_train_rows: 500000        # stratified cap; rare classes are always kept (>= 1000 rows or all)
+  random_forest:
+    n_estimators: 300
+    max_depth: null
+    class_weight: balanced_subsample
+    n_jobs: -1
+  xgboost:
+    n_estimators: 1000
+    learning_rate: 0.1
+    max_depth: 8
+    early_stopping_rounds: 30
+    tree_method: hist
+    device: cpu                   # set to cuda to train on an NVIDIA GPU
+    max_class_weight: 100
+
+hybrid:
+  classifier: mlp                 # ours; set to xgboost to compare
+  anomaly: isolation_forest       # ours
+  max_benign_fpr: 0.001           # tau and theta are tuned so benign alerts stay <= 1 per 1,000 flows
+  classifier_fpr_share: 0.5       # half of that budget for the classifier (tau), the rest for the anomaly gate (theta)
+  temperature_scaling: true       # fit T on validation first, so tau thresholds honest confidences
+
+protocols:
+  # P1 and P2 score the models saved by `make train` (trained on the 2017 P1 training split).
+  # P2 tests the same models on the 2018 network, so P1 vs P2 isolates the change of network.
+  # majority and random_prior are the trivial baselines: the floor every model must clear.
+  P1_in_dataset:        [majority, random_prior, softmax_regression, mlp, logreg, random_forest, xgboost, hybrid]
+  P2_cross_dataset:     [majority, random_prior, softmax_regression, mlp, logreg, random_forest, xgboost, hybrid]
+  P4_adversarial:       [mlp, mlp_adv_trained, mlp_immutable_only, xgboost]
+
+# P3 retrains the hybrid's classifier once per held-out family, without that family,
+# then scores the classifier alone and the full hybrid on it.
+p3:
+  families: [DoS, DDoS, PortScan, BruteForce, WebAttack, Botnet]   # Infiltration is too small to hold out
+  max_train_rows: 1000000         # stratified cap per retraining, keeps the 6 runs fast
+
+adversarial:
+  epsilon: 0.3                    # max relative increase per mutable feature
+  pgd_steps: 50
+  attack_families: [PortScan, BruteForce, DoS, Botnet]
+
+# ---------------------------------------------------------------------------- analysis
+# Confidence intervals and significance tests on every P1/P2 score (eval/stats.py).
+stats:
+  n_boot: 1000                    # bootstrap resamples (multinomial on confusion cells, so cheap)
+  alpha: 0.05                     # 95% intervals; McNemar p-values Holm-adjusted at this level
+
+# Random search on the validation split (models/tune.py). Trial 0 is always the config above.
+tuning:
+  n_trials: 20
+  max_train_rows: 500000          # stratified subsample per trial, keeps 20 trials in budget
+  apply_best: true                # `make train` uses models/tuning/<model>.json when it exists
+  spaces:
+    softmax_regression:
+      lr: {log_uniform: [0.001, 0.1]}
+      alpha: {log_uniform: [1.0e-6, 1.0e-2]}
+      batch_size: {choice: [1024, 4096, 16384]}
+    mlp:
+      hidden: {choice: [[128, 64], [256, 128], [256, 128, 64], [512, 256, 128]]}
+      dropout: {uniform: [0.0, 0.5]}
+      lr: {log_uniform: [0.0001, 0.01]}
+      alpha: {log_uniform: [1.0e-7, 1.0e-3]}
+      batch_size: {choice: [1024, 2048, 4096]}
+
+# Loss and learning curves for our gradient models (eval/curves.py).
+curves:
+  models: [softmax_regression, mlp]
+  fractions: [0.01, 0.03, 0.1, 0.3, 1.0]   # of the P1 training split, stratified
+
+# Reliability diagrams and temperature scaling (eval/calibration.py).
+calibration:
+  models: [softmax_regression, mlp, xgboost]
+
+# One design choice switched off at a time (eval/ablation.py).
+ablation:
+  models: [softmax_regression, mlp]
+  max_train_rows: 1000000
+  variants:
+    full:
+      description: the pipeline as described in the README
+    no_dedup:
+      description: duplicate flows kept, so identical flows sit in train and test
+      features: {deduplicate: false, drop_conflicting_duplicates: false}
+    with_dst_port:
+      description: destination port used as a feature
+      features: {keep_columns: [Dst Port]}
+    no_log1p:
+      description: no log transform before scaling
+      features: {log1p: false}
+    standard_scaler:
+      description: z-score scaling instead of the quantile transform
+      features: {scaler: standard}
+    no_correlation_filter:
+      description: highly correlated features kept
+      features: {max_correlation: null}
+    no_class_weights:
+      description: every flow weighs the same in the loss
+      training: {balanced_weights: false}
+
+# Feature drift between the two networks (eval/drift.py).
+drift:
+  max_rows: 200000                # flows per side and per family used for KS / PSI
+
+# Re-fit the feature scaling on unlabelled 2018 traffic (eval/adaptation.py).
+adaptation:
+  adaptation_fraction: 0.5        # first half of each 2018 day adapts, second half is scored
+  models: null                    # default: the P2 models without the trivial baselines

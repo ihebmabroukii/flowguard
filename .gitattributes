@@ -1,0 +1,9 @@
+# Store text files with LF line endings in the repository, whatever the OS.
+* text=auto
+*.py text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+*.png binary
+*.zip binary
+*.parquet binary
